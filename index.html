@@ -8,14 +8,13 @@
     @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
 
     :root {
-      --bg: #07080b;
-      --panel: #14161b;
-      --panel-2: #1a1e26;
-      --text: #f2f4f7;
-      --muted: #b9c0cb;
-      --border: #4a5d86;
-      --accent: #8aa8f2;
-      --shadow: rgba(0, 0, 0, 0.3);
+      --bg: #050505;
+      --panel: #101010;
+      --panel-2: #171717;
+      --text: #f5f5f5;
+      --muted: #b9b9b9;
+      --border: #737373;
+      --border-soft: #303030;
       --font-display: "Press Start 2P", "VT323", "Courier New", monospace;
       --font-body: "VT323", "Lucida Console", "Courier New", monospace;
     }
@@ -44,22 +43,26 @@
       max-width: 1475px;
       margin: 0 auto;
       padding: 28px;
-      background: #0a0b0e;
+      background: #080808;
       border: 1px solid var(--border);
-      box-shadow: 0 10px 26px var(--shadow);
+    }
+
+    .intro,
+    .character-card,
+    .empty-state {
+      background: var(--panel);
+      border: 1px solid var(--border);
     }
 
     .intro {
       margin-bottom: 20px;
       padding: 25px;
-      background: var(--panel);
-      border: 1px solid var(--border);
     }
 
     h1,
     h2 {
       margin: 0;
-      color: var(--accent);
+      color: var(--text);
       font-family: var(--font-display);
       font-weight: 400;
       line-height: 1.45;
@@ -75,10 +78,16 @@
       font-size: 1rem;
     }
 
+    .intro p,
+    .card-copy p,
+    .meta-chip,
+    .empty-state {
+      color: var(--muted);
+    }
+
     .intro p {
       max-width: 900px;
       margin: 18px 0 0;
-      color: var(--muted);
       font-size: 1.6rem;
     }
 
@@ -90,17 +99,15 @@
 
     .character-card {
       display: grid;
-      min-height: 260px;
+      min-height: 330px;
       overflow: hidden;
       color: inherit;
       text-decoration: none;
-      background: var(--panel);
-      border: 1px solid var(--border);
     }
 
     .character-card:hover,
     .character-card:focus-visible {
-      border-color: var(--accent);
+      border-color: var(--text);
       outline: 0;
     }
 
@@ -117,6 +124,7 @@
       min-height: 190px;
       object-fit: cover;
       object-position: center;
+      filter: grayscale(1);
       image-rendering: pixelated;
     }
 
@@ -126,8 +134,27 @@
 
     .card-copy p {
       margin: 10px 0 0;
-      color: var(--muted);
       font-size: 1.45rem;
+    }
+
+    .meta-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .meta-chip {
+      padding: 8px 10px;
+      border: 1px solid var(--border-soft);
+      background: #0b0b0b;
+      font-size: 1.25rem;
+      line-height: 1.2;
+    }
+
+    .empty-state {
+      padding: 20px;
+      font-size: 1.5rem;
     }
 
     @media (max-width: 700px) {
@@ -148,17 +175,103 @@
       <p>Hi. This is the quick home page for hosted character movesets. The look will get standardized later; for now, pick a character below to open their page.</p>
     </section>
 
-    <section class="character-grid" aria-label="Characters">
-      <a class="character-card" href="ay-third-raikage.html">
-        <div class="banner">
-          <img src="data/chars/Ay%20Third%20Raikage/ay.webp" alt="Ay [Third Raikage] banner">
-        </div>
-        <div class="card-copy">
-          <h2>Ay [Third Raikage]</h2>
-          <p>Base-only rushdown and snowball moveset.</p>
-        </div>
-      </a>
+    <section class="character-grid" id="character-grid" aria-label="Characters">
+      <div class="empty-state">Loading movesets...</div>
     </section>
   </main>
+
+  <script>
+    const repoApi = "https://api.github.com/repos/Margeshy/su-fighters/contents";
+    const grid = document.getElementById("character-grid");
+
+    function textFrom(root, selector) {
+      const element = root.querySelector(selector);
+      return element ? element.textContent.replace(/\s+/g, " ").trim() : "";
+    }
+
+    function absoluteAssetUrl(pagePath, assetPath) {
+      return new URL(assetPath, new URL(pagePath, window.location.href)).href;
+    }
+
+    function metaValue(documentRoot, label) {
+      const chips = Array.from(documentRoot.querySelectorAll(".meta-chip"));
+      const chip = chips.find((item) => item.textContent.trim().toLowerCase().startsWith(label.toLowerCase()));
+      if (!chip) {
+        return "";
+      }
+
+      const value = chip.querySelector(".chip-value");
+      return (value || chip).textContent.replace(/\s+/g, " ").trim().replace(new RegExp(`^${label}\\s*`, "i"), "");
+    }
+
+    function renderCard(character) {
+      const card = document.createElement("a");
+      card.className = "character-card";
+      card.href = character.path;
+      card.innerHTML = `
+        <div class="banner">
+          <img src="${character.image}" alt="${character.name} banner">
+        </div>
+        <div class="card-copy">
+          <h2>${character.name}</h2>
+          <p>${character.subtitle || "Moveset page"}</p>
+          <div class="meta-list">
+            <span class="meta-chip">Cost: ${character.cost || "TBD"}</span>
+            <span class="meta-chip">Archetype: ${character.archetype || "TBD"}</span>
+            <span class="meta-chip">Difficulty: ${character.difficulty || "TBD"}</span>
+          </div>
+        </div>
+      `;
+      return card;
+    }
+
+    async function readCharacterPage(file) {
+      const response = await fetch(file.path, { cache: "no-store" });
+      const html = await response.text();
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const heroImage = doc.querySelector(".hero img");
+      const subtitle = textFrom(doc, ".character-subtitle").replace(/^"|"$/g, "");
+
+      return {
+        path: file.path,
+        name: textFrom(doc, ".character-name") || file.name.replace(/\.html$/i, ""),
+        subtitle,
+        image: heroImage ? absoluteAssetUrl(file.path, heroImage.getAttribute("src")) : "",
+        cost: metaValue(doc, "Cost:"),
+        archetype: metaValue(doc, "Archetype:"),
+        difficulty: metaValue(doc, "Difficulty:"),
+      };
+    }
+
+    async function loadCharacters() {
+      try {
+        const response = await fetch(repoApi, { cache: "no-store" });
+        const files = await response.json();
+        const pages = files
+          .filter((file) => file.type === "file")
+          .filter((file) => file.name.endsWith(".html"))
+          .filter((file) => file.name !== "index.html")
+          .map((file) => ({ name: file.name, path: file.name }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        const characters = await Promise.all(pages.map(readCharacterPage));
+        grid.replaceChildren(...characters.map(renderCard));
+
+        if (characters.length === 0) {
+          grid.replaceChildren(Object.assign(document.createElement("div"), {
+            className: "empty-state",
+            textContent: "No movesets have been published yet.",
+          }));
+        }
+      } catch (error) {
+        grid.replaceChildren(Object.assign(document.createElement("div"), {
+          className: "empty-state",
+          textContent: "Could not load the moveset index.",
+        }));
+      }
+    }
+
+    loadCharacters();
+  </script>
 </body>
 </html>
