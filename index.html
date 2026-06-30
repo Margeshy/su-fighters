@@ -151,6 +151,34 @@
       line-height: 1.2;
     }
 
+    .character-card .character-subtitle {
+      color: var(--muted);
+      font-size: 1.45rem;
+      font-style: italic;
+      margin: 10px 0 0;
+    }
+
+    .character-card .currency-dollar {
+      color: #71d66d;
+    }
+
+    .character-card .currency-token,
+    .character-card .star-filled {
+      color: #f0cf5c;
+    }
+
+    .character-card .archetype-value {
+      color: #d95e5e;
+    }
+
+    .character-card .archetype-separator {
+      color: var(--text);
+    }
+
+    .character-card .star-empty {
+      color: #7d7d7d;
+    }
+
     .empty-state {
       padding: 20px;
       font-size: 1.5rem;
@@ -180,7 +208,7 @@
   </main>
 
   <script>
-    const repoApi = "https://api.github.com/repos/Margeshy/su-fighters/contents";
+    const charsApi = "https://api.github.com/repos/Margeshy/su-fighters/contents/chars";
     const grid = document.getElementById("character-grid");
 
     function textFrom(root, selector) {
@@ -188,19 +216,19 @@
       return element ? element.textContent.replace(/\s+/g, " ").trim() : "";
     }
 
+    function htmlFrom(root, selector) {
+      const element = root.querySelector(selector);
+      return element ? element.innerHTML.trim() : "";
+    }
+
     function absoluteAssetUrl(pagePath, assetPath) {
       return new URL(assetPath, new URL(pagePath, window.location.href)).href;
     }
 
-    function metaValue(documentRoot, label) {
-      const chips = Array.from(documentRoot.querySelectorAll(".meta-chip"));
-      const chip = chips.find((item) => item.textContent.trim().toLowerCase().startsWith(label.toLowerCase()));
-      if (!chip) {
-        return "";
-      }
-
-      const value = chip.querySelector(".chip-value");
-      return (value || chip).textContent.replace(/\s+/g, " ").trim().replace(new RegExp(`^${label}\\s*`, "i"), "");
+    function cloneMeta(documentRoot, label) {
+      return Array.from(documentRoot.querySelectorAll(".meta-chip"))
+        .find((item) => item.textContent.trim().toLowerCase().startsWith(label.toLowerCase()))
+        ?.outerHTML || `<span class="meta-chip">${label} TBD</span>`;
     }
 
     function renderCard(character) {
@@ -213,44 +241,42 @@
         </div>
         <div class="card-copy">
           <h2>${character.name}</h2>
-          <p>${character.subtitle || "Moveset page"}</p>
+          <p class="character-subtitle">${character.subtitle || "Moveset page"}</p>
           <div class="meta-list">
-            <span class="meta-chip">Cost: ${character.cost || "TBD"}</span>
-            <span class="meta-chip">Archetype: ${character.archetype || "TBD"}</span>
-            <span class="meta-chip">Difficulty: ${character.difficulty || "TBD"}</span>
+            ${character.cost}
+            ${character.archetype}
+            ${character.difficulty}
           </div>
         </div>
       `;
       return card;
     }
 
-    async function readCharacterPage(file) {
-      const response = await fetch(file.path, { cache: "no-store" });
+    async function readCharacterPage(characterDir) {
+      const pagePath = `${characterDir.path}/index.html`;
+      const response = await fetch(pagePath, { cache: "no-store" });
       const html = await response.text();
       const doc = new DOMParser().parseFromString(html, "text/html");
       const heroImage = doc.querySelector(".hero img");
-      const subtitle = textFrom(doc, ".character-subtitle").replace(/^"|"$/g, "");
 
       return {
-        path: file.path,
-        name: textFrom(doc, ".character-name") || file.name.replace(/\.html$/i, ""),
-        subtitle,
-        image: heroImage ? absoluteAssetUrl(file.path, heroImage.getAttribute("src")) : "",
-        cost: metaValue(doc, "Cost:"),
-        archetype: metaValue(doc, "Archetype:"),
-        difficulty: metaValue(doc, "Difficulty:"),
+        path: pagePath,
+        name: textFrom(doc, ".character-name") || characterDir.name,
+        subtitle: htmlFrom(doc, ".character-subtitle"),
+        image: heroImage ? absoluteAssetUrl(pagePath, heroImage.getAttribute("src")) : "",
+        cost: cloneMeta(doc, "Cost:"),
+        archetype: cloneMeta(doc, "Archetype:"),
+        difficulty: cloneMeta(doc, "Difficulty:"),
       };
     }
 
     async function loadCharacters() {
       try {
-        const response = await fetch(repoApi, { cache: "no-store" });
+        const response = await fetch(charsApi, { cache: "no-store" });
         const files = await response.json();
         const pages = files
-          .filter((file) => file.type === "file")
-          .filter((file) => file.name.endsWith(".html"))
-          .filter((file) => file.name !== "index.html")
-          .map((file) => ({ name: file.name, path: file.name }))
+          .filter((file) => file.type === "dir")
+          .map((file) => ({ name: file.name, path: `chars/${file.name}` }))
           .sort((a, b) => a.name.localeCompare(b.name));
 
         const characters = await Promise.all(pages.map(readCharacterPage));
