@@ -38,10 +38,16 @@
     }
 
     body {
+      position: relative;
       padding: 30px;
       font-size: 1.45rem;
       line-height: 1.35;
       letter-spacing: 0.015em;
+    }
+
+    body > *:not(.background-motif):not(.music-control):not(.music-audio) {
+      position: relative;
+      z-index: 1;
     }
 
     .template-shell {
@@ -58,6 +64,93 @@
     }
 
     .template-shell::before {
+      display: none;
+    }
+
+    .background-motif {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .motif-hand {
+      position: absolute;
+      width: var(--motif-size);
+      opacity: var(--motif-opacity, 0.06);
+      transform: translate(-50%, -50%) rotate(var(--motif-rotation));
+      filter: grayscale(1) sepia(0.28) saturate(2.1) hue-rotate(184deg) brightness(1.35);
+      image-rendering: pixelated;
+      mix-blend-mode: screen;
+    }
+
+    .motif-hand:nth-child(3n) {
+      opacity: calc(var(--motif-opacity, 0.06) + 0.015);
+    }
+
+    .motif-hand:nth-child(4n) {
+      filter: grayscale(1) sepia(0.18) saturate(1.8) hue-rotate(192deg) brightness(1.15);
+    }
+
+    .music-control {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 5;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      background: var(--panel);
+      border: 1px solid var(--border-strong);
+      box-shadow: 0 8px 18px var(--shadow);
+    }
+
+    .music-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 42px;
+      padding: 10px 14px;
+      color: var(--text);
+      background: transparent;
+      border: 0;
+      font-family: var(--font-body);
+      font-size: 1.15rem;
+      line-height: 1;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+    }
+
+    .music-button:hover,
+    .music-button.is-playing {
+      color: var(--base-accent);
+      border-color: var(--base-accent);
+    }
+
+    .music-button-icon {
+      font-family: var(--font-display);
+      font-size: 0.8rem;
+      line-height: 1;
+    }
+
+    .music-volume {
+      width: 95px;
+      max-width: 0;
+      opacity: 0;
+      accent-color: var(--base-accent);
+      cursor: pointer;
+      transition: max-width 160ms ease, opacity 160ms ease;
+    }
+
+    .music-control:hover .music-volume,
+    .music-control:focus-within .music-volume {
+      max-width: 95px;
+      opacity: 1;
+    }
+
+    .music-audio {
       display: none;
     }
 
@@ -873,6 +966,15 @@
   </style>
 </head>
 <body>
+  <div class="background-motif" aria-hidden="true"></div>
+  <div class="music-control">
+    <button class="music-button" type="button" aria-pressed="false" aria-label="Play Ay theme music">
+      <span class="music-button-icon" aria-hidden="true">♪</span>
+      <span class="music-button-label">Music</span>
+    </button>
+    <input class="music-volume" type="range" min="0" max="1" step="0.01" value="0.65" aria-label="Music volume">
+  </div>
+  <audio class="music-audio" src="assets/ay-theme.mp3" loop preload="none"></audio>
   <main class="template-shell">
     <section class="hero pixel-panel">
       <div class="portrait-box">
@@ -1099,6 +1201,131 @@
       document.fonts?.ready.then(scheduleAlign);
       document.querySelectorAll("img").forEach((image) => {
         image.addEventListener("load", scheduleAlign);
+      });
+    })();
+
+    (() => {
+      const motifSources = [
+        "assets/pixel-hands/five-finger-perfectpixel.png",
+        "assets/pixel-hands/four-finger-perfectpixel.png",
+        "assets/pixel-hands/three-finger-perfectpixel.png",
+        "assets/pixel-hands/two-finger-perfectpixel.png",
+        "assets/pixel-hands/one-finger-perfectpixel.png",
+      ];
+      const iconSize = 48;
+      const iconGap = 5;
+
+      const overlaps = (a, b, gap = 0) => (
+        a.left < b.right + gap &&
+        a.right > b.left - gap &&
+        a.top < b.bottom + gap &&
+        a.bottom > b.top - gap
+      );
+
+      const renderBackgroundMotifs = () => {
+        const layer = document.querySelector(".background-motif");
+        const shell = document.querySelector(".template-shell");
+        if (!layer) return;
+
+        layer.replaceChildren();
+
+        const viewport = {
+          width: window.innerWidth,
+          height: window.innerHeight,
+        };
+        const shellRect = shell?.getBoundingClientRect();
+        const protectedRect = shellRect && {
+          left: Math.max(0, shellRect.left - 12),
+          top: Math.max(0, shellRect.top - 12),
+          right: Math.min(viewport.width, shellRect.right + 12),
+          bottom: Math.min(viewport.height, shellRect.bottom + 12),
+        };
+        const regions = protectedRect ? [
+          { left: 0, top: 0, right: protectedRect.left, bottom: viewport.height },
+          { left: protectedRect.right, top: 0, right: viewport.width, bottom: viewport.height },
+        ] : [
+          { left: 0, top: 0, right: viewport.width, bottom: viewport.height },
+        ];
+        const viableRegions = regions
+          .map((region) => ({
+            ...region,
+            width: Math.max(0, region.right - region.left),
+            height: Math.max(0, region.bottom - region.top),
+          }))
+          .filter((region) => region.width >= iconSize && region.height >= iconSize);
+        const availableArea = viableRegions.reduce((sum, region) => sum + region.width * region.height, 0);
+        const targetCount = Math.min(220, Math.max(70, Math.round(availableArea / 3600)));
+        const placed = [];
+        const fragment = document.createDocumentFragment();
+
+        for (let attempts = 0; viableRegions.length && placed.length < targetCount && attempts < targetCount * 140; attempts += 1) {
+          const region = viableRegions[Math.floor(Math.random() * viableRegions.length)];
+          const x = region.left + iconSize / 2 + Math.random() * (region.width - iconSize);
+          const y = region.top + iconSize / 2 + Math.random() * (region.height - iconSize);
+          const rect = {
+            left: x - iconSize / 2,
+            top: y - iconSize / 2,
+            right: x + iconSize / 2,
+            bottom: y + iconSize / 2,
+          };
+
+          if (protectedRect && overlaps(rect, protectedRect)) continue;
+          if (placed.some((other) => overlaps(rect, other, iconGap))) continue;
+
+          const image = document.createElement("img");
+          image.className = "motif-hand";
+          image.src = motifSources[Math.floor(Math.random() * motifSources.length)];
+          image.alt = "";
+          image.style.left = `${x}px`;
+          image.style.top = `${y}px`;
+          image.style.setProperty("--motif-size", `${iconSize}px`);
+          image.style.setProperty("--motif-rotation", `${Math.round(Math.random() * 360)}deg`);
+          image.style.setProperty("--motif-opacity", `${0.074 + Math.random() * 0.028}`);
+
+          placed.push(rect);
+          fragment.append(image);
+        }
+
+        layer.append(fragment);
+      };
+
+      let motifFrame = 0;
+      const scheduleMotifs = () => {
+        cancelAnimationFrame(motifFrame);
+        motifFrame = requestAnimationFrame(renderBackgroundMotifs);
+      };
+
+      window.addEventListener("load", scheduleMotifs);
+      window.addEventListener("resize", scheduleMotifs);
+      window.visualViewport?.addEventListener("resize", scheduleMotifs);
+    })();
+
+    (() => {
+      const button = document.querySelector(".music-button");
+      const label = button?.querySelector(".music-button-label");
+      const audio = document.querySelector(".music-audio");
+      const volume = document.querySelector(".music-volume");
+      if (!button || !label || !audio || !volume) return;
+
+      let isPlaying = false;
+      audio.loop = true;
+      audio.volume = Number(volume.value);
+
+      volume.addEventListener("input", () => {
+        audio.volume = Number(volume.value);
+      });
+
+      button.addEventListener("click", async () => {
+        isPlaying = !isPlaying;
+        if (isPlaying) {
+          await audio.play();
+        } else {
+          audio.pause();
+        }
+        button.classList.toggle("is-playing", isPlaying);
+        button.setAttribute("aria-pressed", String(isPlaying));
+        button.setAttribute("aria-label", `${isPlaying ? "Pause" : "Play"} Ay theme music`);
+        label.textContent = isPlaying ? "Pause" : "Music";
       });
     })();
   </script>
